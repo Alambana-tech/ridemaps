@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <link rel="icon" href="Desain_tanpa_judul__1_-removebg-preview.png" type="image/png">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alambana Ride Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f4f4f4;
+    }
+    #map {
+      height: 100vh;
+    }
+    .control-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: #fff;
+      padding: 15px;
+      z-index: 1000;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      width: 320px;
+      max-width: 95vw;
+    }
+    label {
+      font-weight: bold;
+      margin-top: 10px;
+      display: block;
+    }
+    select, button, input {
+      margin-top: 6px;
+      width: 100%;
+      padding: 8px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #info {
+      margin-top: 10px;
+      font-size: 14px;
+      background: #f9f9f9;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+    }
+    .leaflet-routing-container {
+      display: none !important;
+    }
+    @media (max-width: 768px) {
+      .control-panel {
+        left: 5px;
+        right: 5px;
+        width: auto;
+        padding: 10px;
+      }
+      select, button, input {
+        font-size: 16px;
+      }
+      #info {
+        font-size: 15px;
+      }
+    }
+
+    #legend {
+  position: absolute;
+  bottom: 20px;
+  left: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  z-index: 1001;
+  line-height: 1.5;
+}
+
+  </style>
+</head>
+<body>
+  <div class="control-panel">
+    <label for="languageSelect">🌐 Pilih Bahasa:</label>
+    <select id="languageSelect" onchange="setLanguage()">
+      <option value="id">Bahasa Indonesia</option>
+      <option value="en">English</option>
+    </select>
+
+    <label id="labelBike">Pilih jenis sepeda:</label>
+    <select id="bikeType" onchange="updateInfo()">
+      <option value="mtb">MTB</option>
+      <option value="lipat">Sepeda Lipat</option>
+      <option value="road">Road Bike</option>
+      <option value="fixie">Fixie</option>
+    </select>
+
+    <label id="labelSpeed">Kecepatan manual (km/jam):</label>
+    <input type="number" id="customSpeed" placeholder="Contoh: 18" oninput="updateInfo()">
+
+    <div id="info"></div>
+    <button onclick="clearRoute()"> Hapus Rute</button>
+  </div>
+
+  <div id="map"></div>
+
+
+
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+  <script>
+    let currentLang = 'id';
+    const langText = {
+      id: {
+        bikeLabel: 'Pilih jenis sepeda:',
+        speedLabel: 'Kecepatan manual (km/jam):',
+        placeholder: 'Contoh: 18',
+        infoNone: 'Klik dua titik atau lebih untuk membuat rute.',
+        clear: ' Hapus Rute',
+        stats: {
+          type: '🚴 Jenis sepeda',
+          distance: '📏 Jarak',
+          climb: '⛰️ Tanjakan total',
+          surface: '🛣️ Permukaan',
+          time: '⏱️ Estimasi waktu',
+          road: '📊 Kelayakan jalan',
+        },
+        recommendations: {
+          calculating: 'Menentukan rekomendasi...',
+          mtb: 'Rute cocok untuk MTB 🚵',
+          lipat_good: 'Cocok untuk sepeda lipat 👍',
+          lipat_bad: 'Rute agak berat untuk sepeda lipat ⚠️',
+          road_good: 'Cocok untuk Road Bike ✅',
+          road_bad: 'Tidak disarankan untuk Road Bike ❌',
+          fixie_good: 'Cocok untuk Fixie ✅',
+          fixie_bad: 'Tidak disarankan untuk Fixie ❌'
+        }
+      },
+      en: {
+        bikeLabel: 'Choose bike type:',
+        speedLabel: 'Custom speed (km/h):',
+        placeholder: 'Example: 18',
+        infoNone: 'Click two or more points to make a route.',
+        clear: ' Clear Route',
+        stats: {
+          type: '🚴 Bike type',
+          distance: '📏 Distance',
+          climb: '⛰️ Total climb',
+          surface: '🛣️ Surface',
+          time: '⏱️ Estimated time',
+          road: '📊 Road suitability',
+        },
+        recommendations: {
+          calculating: 'Calculating recommendation...',
+          mtb: 'Good for MTB 🚵',
+          lipat_good: 'Suitable for folding bike 👍',
+          lipat_bad: 'Challenging for folding bike ⚠️',
+          road_good: 'Suitable for road bike ✅',
+          road_bad: 'Not recommended for road bike ❌',
+          fixie_good: 'Suitable for Fixie ✅',
+          fixie_bad: 'Not recommended for Fixie ❌'
+        }
+      }
+    };
+
+    function setLanguage() {
+      currentLang = document.getElementById('languageSelect').value;
+      const t = langText[currentLang];
+      document.getElementById('labelBike').innerText = t.bikeLabel;
+      document.getElementById('labelSpeed').innerText = t.speedLabel;
+      document.getElementById('customSpeed').placeholder = t.placeholder;
+      document.querySelector('button').innerText = t.clear;
+      updateInfo();
+    }
+
+    const map = L.map('map', { zoomControl: false }).setView([-7.797068, 110.370529], 13);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    L.Control.geocoder({ defaultMarkGeocode: false })
+      .on('markgeocode', function(e) {
+        map.setView(e.geocode.center, 15);
+      })
+      .addTo(map);
+
+    let waypoints = [], routingControl = null, totalDistance = 0, elevationGain = 0;
+    let surfaceTypes = new Set();
+    const bikeSpeeds = { mtb: 15, lipat: 13, road: 25, fixie: 18 };
+
+    map.on('click', function(e) {
+      waypoints.push(e.latlng);
+      if (routingControl) map.removeControl(routingControl);
+
+      routingControl = L.Routing.control({
+        waypoints,
+        routeWhileDragging: false,
+        addWaypoints: false,
+        show: false,
+        createMarker: function(i, wp, nWps) {
+          return L.marker(wp.latLng, {
+            icon: L.icon({
+              iconUrl: i === 0 ? 'https://maps.google.com/mapfiles/ms/icons/green-dot.png' :
+                       i === nWps - 1 ? 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' :
+                                        'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+              iconSize: [32, 32],
+              iconAnchor: [16, 32]
+            })
+          });
+        }
+      }).on('routesfound', function(e) {
+        const coords = e.routes[0].coordinates;
+        totalDistance = (e.routes[0].summary.totalDistance / 1000).toFixed(2);
+        fetchElevation(coords);
+        fetchSurfaceTypes(coords);
+      }).addTo(map);
+
+      updateInfo();
+    });
+
+    function clearRoute() {
+      if (routingControl) map.removeControl(routingControl);
+      waypoints = [];
+      totalDistance = 0;
+      elevationGain = 0;
+      surfaceTypes.clear();
+      document.getElementById('info').innerHTML = '';
+    }
+
+    function updateInfo() {
+      const t = langText[currentLang];
+      const type = document.getElementById('bikeType').value;
+      const speedInput = parseFloat(document.getElementById('customSpeed').value);
+      const speed = !isNaN(speedInput) && speedInput > 0 ? speedInput : bikeSpeeds[type];
+      const estTime = speed > 0 ? (totalDistance / speed * 60).toFixed(0) : 0;
+
+      let layak = 100;
+      const kasar = ['unpaved', 'gravel', 'dirt', 'ground', 'sand'];
+      const jumlahKasar = [...surfaceTypes].filter(s => kasar.includes(s)).length;
+      if (jumlahKasar > 0) layak -= jumlahKasar * 15;
+      if (elevationGain > 100) layak -= 10;
+      if (layak < 0) layak = 0;
+
+      let msg = `${t.stats.type}: <b>${type.toUpperCase()}</b><br>`;
+      if (waypoints.length < 2) {
+        msg += t.infoNone;
+      } else {
+        msg += `${t.stats.distance}: <b>${totalDistance} km</b><br>`;
+        msg += `${t.stats.climb}: <b>${elevationGain} m</b><br>`;
+        msg += `${t.stats.surface}: <b>${[...surfaceTypes].join(', ') || 'Memuat...'}</b><br>`;
+        msg += `${t.stats.time}: <b>${estTime} menit</b><br>`;
+        msg += `${t.stats.road}: <b>${layak}%</b><br>`;
+        msg += `✅ ${getRecommendation(type)}`;
+      }
+      document.getElementById('info').innerHTML = msg;
+    }
+
+    function fetchElevation(coords) {
+      const samples = coords.filter((_, i) => i % Math.ceil(coords.length / 100) === 0);
+      const locations = samples.map(c => `${c.lat},${c.lng}`).join('|');
+      fetch(`https://api.open-elevation.com/api/v1/lookup?locations=${locations}`)
+        .then(res => res.json())
+        .then(data => {
+          elevationGain = 0;
+          for (let i = 1; i < data.results.length; i++) {
+            const delta = data.results[i].elevation - data.results[i - 1].elevation;
+            if (delta > 0) elevationGain += delta;
+          }
+          elevationGain = Math.round(elevationGain);
+          updateInfo();
+        });
+    }
+
+    function fetchSurfaceTypes(coords) {
+      const midpoints = coords.filter((_, i) => i % Math.ceil(coords.length / 20) === 0);
+      surfaceTypes.clear();
+      midpoints.forEach(point => {
+        const query = `https://overpass-api.de/api/interpreter?data=[out:json];way(around:20,${point.lat},${point.lng})[highway];out tags;`;
+        fetch(query)
+          .then(res => res.json())
+          .then(data => {
+            data.elements.forEach(el => {
+              if (el.tags && el.tags.surface) surfaceTypes.add(el.tags.surface);
+            });
+            updateInfo();
+          });
+      });
+    }
+
+    function getRecommendation(type) {
+      const t = langText[currentLang].recommendations;
+      if (!surfaceTypes.size) return t.calculating;
+
+      const kasar = ['unpaved', 'gravel', 'dirt', 'ground', 'sand'];
+      const kasarCount = [...surfaceTypes].filter(s => kasar.includes(s)).length;
+      const naik = elevationGain > 80;
+
+      if (type === 'mtb') return t.mtb;
+      if (type === 'lipat') return kasarCount > 1 || naik ? t.lipat_bad : t.lipat_good;
+      if (type === 'road') return kasarCount > 0 || naik ? t.road_bad : t.road_good;
+      if (type === 'fixie') return kasarCount > 0 || naik ? t.fixie_bad : t.fixie_good;
+      return '';
+    }
+
+    setLanguage();
+
+    // FITUR LOKASI PENGGUNA
+    if (confirm("Aktifkan layanan lokasi untuk menunjukkan posisi Anda?")) {
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          function (position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const userMarker = L.marker([lat, lng], {
+              icon: L.icon({
+                iconUrl: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+                iconSize: [32, 32],
+                iconAnchor: [16, 32]
+              })
+            }).addTo(map).bindPopup("📍 Anda di sini").openPopup();
+            map.setView([lat, lng], 14);
+          },
+          function (error) {
+            alert("Gagal mendapatkan lokasi. Pastikan izin lokasi diaktifkan.");
+          }
+        );
+      } else {
+        alert("Perangkat Anda tidak mendukung geolokasi.");
+      }
+    }
+  </script>
+</body>
+</html>
